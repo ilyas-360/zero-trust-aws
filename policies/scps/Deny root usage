@@ -1,0 +1,20 @@
+{
+  "_comment": "SCP: Deny Root Usage",
+  "_purpose": "Prevents any API call made using root account credentials across all accounts in the OU. Root credentials bypass IAM policies and represent the highest-risk attack surface in any AWS account. This SCP closes that gap organizationally.",
+  "_threat_closed": "Compromised root credentials, insider threat using root, accidental root usage for operational tasks.",
+  "_applies_to": "All accounts in Workload OU, Security OU, Infrastructure OU. NOT applied to management account (SCPs cannot restrict the management account).",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyRootAccountUsage",
+      "Effect": "Deny",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "StringLike": {
+          "aws:PrincipalArn": "arn:aws:iam::*:root"
+        }
+      }
+    }
+  ]
+}

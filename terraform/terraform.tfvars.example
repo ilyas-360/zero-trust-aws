@@ -1,0 +1,31 @@
+# =============================================================================
+# terraform.tfvars.example
+# Copy to terraform.tfvars and fill in your actual account IDs
+# NEVER commit terraform.tfvars to Git — it contains sensitive account IDs
+# =============================================================================
+
+aws_region        = "eu-west-1"
+organization_name = "my-zero-trust-org"
+
+allowed_regions = [
+  "eu-west-1",
+  "eu-west-3"
+]
+
+# Replace with your actual AWS account IDs
+management_account_id = "111111111111"
+security_account_id   = "222222222222"
+logging_account_id    = "333333333333"
+network_account_id    = "444444444444"
+
+workload_account_ids = [
+  "555555555555"
+]
+
+# Networking
+vpc_cidr_management = "10.0.0.0/16"
+vpc_cidr_security   = "10.1.0.0/16"
+vpc_cidr_workload   = "10.2.0.0/16"
+
+# Logging
+log_retention_days = 365

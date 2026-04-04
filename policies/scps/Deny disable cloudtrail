@@ -1,0 +1,21 @@
+{
+  "_comment": "SCP: Deny Disabling or Modifying CloudTrail",
+  "_purpose": "Ensures the audit trail is immutable across all accounts. An attacker who compromises an account will attempt to delete CloudTrail logs to cover their tracks. This SCP makes that impossible regardless of IAM permissions in the account.",
+  "_threat_closed": "Attacker log deletion post-compromise, insider covering tracks, accidental CloudTrail disablement.",
+  "_design_note": "This works in combination with the S3 bucket policy in the logging account that denies s3:DeleteObject. Together, they protect both the CloudTrail service configuration and the log objects themselves.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyCloudTrailModification",
+      "Effect": "Deny",
+      "Action": [
+        "cloudtrail:DeleteTrail",
+        "cloudtrail:StopLogging",
+        "cloudtrail:UpdateTrail",
+        "cloudtrail:PutEventSelectors",
+        "cloudtrail:DeleteEventDataStore"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

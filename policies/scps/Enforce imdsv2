@@ -1,0 +1,31 @@
+{
+  "_comment": "SCP: Enforce IMDSv2 on all EC2 instances",
+  "_purpose": "Forces all EC2 instances to use IMDSv2 (token-based) instead of IMDSv1. IMDSv1 is vulnerable to SSRF attacks — a web application vulnerability can be used to make the server request its own metadata endpoint and return credentials to the attacker. IMDSv2 requires a PUT request to obtain a session token first, which SSRF cannot do.",
+  "_threat_closed": "SSRF-to-credential-theft (the most common path for EC2 credential compromise), metadata endpoint abuse.",
+  "_real_world_example": "The 2019 Capital One breach used an SSRF vulnerability to retrieve EC2 instance credentials via IMDSv1. IMDSv2 would have prevented the credential retrieval step.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyNonIMDSv2Instances",
+      "Effect": "Deny",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:*:*:instance/*",
+      "Condition": {
+        "StringNotEquals": {
+          "ec2:MetadataHttpTokens": "required"
+        }
+      }
+    },
+    {
+      "Sid": "DenyIMDSv1Modification",
+      "Effect": "Deny",
+      "Action": "ec2:ModifyInstanceMetadataOptions",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:MetadataHttpTokens": "optional"
+        }
+      }
+    }
+  ]
+}

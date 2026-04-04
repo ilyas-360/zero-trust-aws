@@ -1,0 +1,56 @@
+{
+  "_comment": "IAM Role Assumption Chain — cross-account access pattern",
+  "_purpose": "Documents the trust policies for cross-account role assumption. No IAM users with long-lived access keys exist. All access follows this chain: authenticated principal → management account role → workload account role → scoped resource access. Each hop produces temporary credentials that expire in 1 hour.",
+  "_why_chains_over_users": "Long-lived access keys are the most common source of AWS credential compromise. A leaked key is valid until manually rotated — which can take days to detect. A leaked role session token expires in at most 1 hour automatically.",
+  "_escalation_prevention": "The permission boundary attached to all workload roles prevents privilege escalation even if an attacker obtains valid credentials. They cannot create new roles, attach policies, or modify their own boundary.",
+
+  "cross_account_trust_policy": {
+    "_applies_to": "Roles in workload accounts that can be assumed from the management account",
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "AllowCrossAccountAssumption",
+        "Effect": "Allow",
+        "Principal": {
+          "AWS": "arn:aws:iam::MANAGEMENT_ACCOUNT_ID:root"
+        },
+        "Action": "sts:AssumeRole",
+        "Condition": {
+          "StringEquals": {
+            "aws:PrincipalOrgID": "o-ORGANIZATION_ID"
+          },
+          "Bool": {
+            "aws:MultiFactorAuthPresent": "true"
+          },
+          "NumericLessThan": {
+            "aws:MultiFactorAuthAge": "3600"
+          }
+        }
+      }
+    ]
+  },
+
+  "session_policy": {
+    "_purpose": "Further scopes permissions for the assumed session below what the role allows",
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ec2:Describe*",
+          "s3:GetObject",
+          "s3:ListBucket"
+        ],
+        "Resource": "*"
+      }
+    ]
+  },
+
+  "assumption_flow": {
+    "step_1": "Developer authenticates via IAM Identity Center (MFA required)",
+    "step_2": "Assumes role in management account (PrincipalOrgID condition verified)",
+    "step_3": "Assumes cross-account role in target workload account (MFA age < 1 hour verified)",
+    "step_4": "Receives temporary credentials scoped by permission boundary",
+    "step_5": "Session expires in 1 hour — no renewal without re-authentication"
+  }
+}

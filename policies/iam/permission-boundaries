@@ -1,0 +1,84 @@
+{
+  "_comment": "IAM Permission Boundary — Applied to all roles in workload accounts",
+  "_purpose": "Sets the maximum permissions any role in a workload account can have. Even if a role is granted AdministratorAccess via an inline policy, the permission boundary caps what the role can actually do. This closes the IAM privilege escalation path.",
+  "_threat_closed": "IAM privilege escalation within an account (creating a new role with elevated permissions), accidental over-permissioning, insider threat creating backdoor roles.",
+  "_design_note": "This boundary is enforced via a Terraform module that attaches it during role creation. No workload role can be created without it. The boundary itself cannot be removed by roles subject to it — only by the management account via Organizations.",
+  "_key_denies": [
+    "All IAM write actions — prevents role/policy creation to escalate privileges",
+    "All Organizations actions — prevents account manipulation",
+    "GuardDuty disable/delete — preserves threat detection",
+    "CloudTrail modification — already covered by SCP but defense-in-depth",
+    "Security Hub disable — preserves centralized findings"
+  ],
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowWorkloadServices",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:*",
+        "s3:*",
+        "rds:*",
+        "lambda:*",
+        "logs:*",
+        "cloudwatch:*",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowIAMReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "iam:Get*",
+        "iam:List*",
+        "iam:SimulateCustomPolicy",
+        "iam:SimulatePrincipalPolicy"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyIAMWrite",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateUser",
+        "iam:CreateRole",
+        "iam:AttachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:PutUserPolicy",
+        "iam:CreateAccessKey",
+        "iam:DeleteBoundaryPolicy",
+        "iam:PutRolePermissionsBoundary",
+        "iam:DeleteRolePermissionsBoundary"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyOrganizationsAccess",
+      "Effect": "Deny",
+      "Action": [
+        "organizations:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenySecurityToolingDisable",
+      "Effect": "Deny",
+      "Action": [
+        "guardduty:DeleteDetector",
+        "guardduty:DisassociateFromMasterAccount",
+        "guardduty:StopMonitoringMembers",
+        "securityhub:DisableSecurityHub",
+        "securityhub:DeleteInvitations",
+        "cloudtrail:DeleteTrail",
+        "cloudtrail:StopLogging",
+        "config:DeleteConfigurationRecorder",
+        "config:StopConfigurationRecorder"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

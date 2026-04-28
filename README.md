@@ -8,7 +8,7 @@
 ![Zero Trust](https://img.shields.io/badge/Security-Zero%20Trust-red)
 ![SAA](https://img.shields.io/badge/AWS-Solutions%20Architect%20Associate-FF9900)
 
-**AWS Certified Solutions Architect – Associate (SAA-C03) | CCNA | Final-year Cybersecurity Engineering Student, ENSA Oujda**
+**AWS Certified Solutions Architect – Associate (SAA-C03) | CCNA | fourth-year Cybersecurity Engineering Student, ENSA Oujda**
 
 ---
 

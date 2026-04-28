@@ -16,4 +16,4 @@ Architecture diagrams for the Zero Trust multi-account AWS environment.
 
 All diagrams created with [draw.io](https://app.diagrams.net/) —   free, no account required. Exported as PNG for GitHub rendering. Source `.drawio` files included for editability.
 
-*Diagrams being added as architecture is finalized during week of April 6, 2026.*
+*Diagrams being added as architecture is finalized during week of April 28, 2026.*

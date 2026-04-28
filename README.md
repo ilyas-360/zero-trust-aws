@@ -202,7 +202,6 @@ Specialization: Cloud Security Engineering
 **AWS Certified Solutions Architect – Associate (SAA-C03)** | March 2026
 **CCNA** | Enterprise hybrid networking foundation
 📍 Morocco — Open to Summer 2026 internships in Cloud Security, DevSecOps, Infrastructure Security
-*(Remote · Casablanca · Rabat · Tangier)*
 
 Previous project: [AWS-Cloud-Security-Foundations](https://github.com/ilyas-360/AWS-Cloud-Security-Foundations) — CCNA Enterprise Hybrid Lab
 

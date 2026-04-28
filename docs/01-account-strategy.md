@@ -2,7 +2,7 @@
 
 ## Why Multi-Account
 
-The single biggest architectural decision in this project is the choice to use separate AWS accounts rather than a single account with IAM-based separation. This is not a complexity preference — it is a security requirement.
+The single biggest architectural  decision in this project is the choice to use separate AWS accounts rather than a single account with IAM-based separation. This is not a complexity preference — it is a security requirement.
 
 IAM policies are powerful but they operate within an account. A sufficiently privileged principal in a single-account setup can modify or delete IAM policies, CloudTrail configurations, GuardDuty detectors, and other security controls. In a multi-account setup, the account boundary is enforced by AWS itself — no IAM policy can cross it.
 

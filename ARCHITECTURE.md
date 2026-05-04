@@ -83,7 +83,7 @@ In this architecture, NACLs serve as a blunt backstop — they enforce subnet-le
 
 An IAM permission boundary is a managed policy that sets the maximum permissions any role in that account can have — regardless of what inline policies or managed policies are attached. Even if a developer creates a role with `AdministratorAccess`, if the permission boundary doesn't include that action, it doesn't work.
 
-This closes a critical gap: **IAM escalation within an account.** Without permission boundaries, a role that has `iam:CreateRole` and `iam:AttachRolePolicy` can create a new role with full administrator access. With a permission boundary that doesn't include IAM write actions, this escalation path is closed.
+: **IAM escalation within an account.** Without permission boundaries, a role that has `iam:CreateRole` and `iam:AttachRolePolicy` can create a new role with full administrator access. With a permission boundary that doesn't include IAM write actions, this escalation path is closed.
 
 The permission boundary in this project:
 - Allows specific service actions needed for workload operation

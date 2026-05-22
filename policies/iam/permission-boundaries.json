@@ -76,7 +76,7 @@
         "cloudtrail:DeleteTrail",
         "cloudtrail:StopLogging",
         "config:DeleteConfigurationRecorder",
-        "config:StopConfigurationRecorder"
+        ":StopConfigurationRecorder"
       ],
       "Resource": "*"
     }

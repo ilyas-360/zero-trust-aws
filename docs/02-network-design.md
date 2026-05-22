@@ -20,4 +20,4 @@ Transit Gateway acts as a hub router. All VPCs attach to it and traffic is route
 
 Security Groups are the primary network control — they are stateful and applied per resource. NACLs are applied at the subnet level as a stateless backstop. The principle is defense-in-depth: a Security Group misconfiguration does not automatically result in a breach because the NACL enforces subnet-level rules independently.
 
-Workload subnets are separated by function. Application tier subnets cannot communicate directly with data tier subnets — traffic must pass through a Security Group boundary that enforces least-privilege network access.
+Workload subnets are separated by function. Application tier subnets cannot communicate directly with data tier subnets — traffic must pass through a Security Group boundary that enforces least-.

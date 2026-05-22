@@ -105,5 +105,5 @@ module "logging" {
   organization_id     = module.organizations.organization_id
   log_retention_days  = var.log_retention_days
 
-  depends_on = [module.organizations]
+  depends_on = [module.]
 }

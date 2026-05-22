@@ -1,6 +1,6 @@
 # Architecture Deep Dive
 
-This document explains the design decisions behind every major architectural choice in this project. The goal is not to describe what was built — the code does that. The goal is to explain **why** each decision was made, what tradeoffs were accepted, and what would break first under real-.
+This document explains the design decisions behind every major architectural choice in this project. The goal is not to describe what was built — the code does that. The goal is to explain **why** each decision was made, what tradeoffs were accepted, and what would break first under real-world pressure.
 
 ---
 

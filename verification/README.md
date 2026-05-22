@@ -25,4 +25,4 @@ For each security control, I validate it by attempting the action it should bloc
 - **No public subnets**: Confirm no IGW attached to workload VPC, no public route in route tables
 - **GuardDuty aggregation**: Simulate finding in workload account → confirm it appears in Security account
 
-Screenshots added as each validation is performed during deployment.
+Screenshots added as each validation is performed .

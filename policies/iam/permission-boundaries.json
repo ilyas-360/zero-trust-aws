@@ -1,5 +1,5 @@
 {
-  "_comment": "IAM Permission Boundary — Applied to all roles in workload accounts",
+  "_comment": "IAM Permission Boundary — Applied to all roles in workload ",
   "_purpose": "Sets the maximum permissions any role in a workload account can have. Even if a role is granted AdministratorAccess via an inline policy, the permission boundary caps what the role can actually do. This closes the IAM privilege escalation path.",
   "_threat_closed": "IAM privilege escalation within an account (creating a new role with elevated permissions), accidental over-permissioning, insider threat creating backdoor roles.",
   "_design_note": "This boundary is enforced via a Terraform module that attaches it during role creation. No workload role can be created without it. The boundary itself cannot be removed by roles subject to it — only by the management account via Organizations.",

@@ -1,57 +1,37 @@
-# 03 — IAM Design# 03 — IAM Design
+# 03 — IAM Design
 
-## No Long-Lived Credentials
+> **Status: design and Terraform target.** The Terraform creates one bounded workload security-read role and one Security-account role that can assume it. The boundary does not automatically attach to every workload role. Do not claim account-wide enforcement without an additional tested control.
 
-No IAM users with access keys exist in this architecture. This is a hard requirement, not a preference. Long-lived access keys are the single most common source of AWS credential compromise — they can be leaked in code repositories, CI/CD logs, or environment variables and remain valid until manually rotated.
+## Credentials and account access
 
-All access uses role assumption chains that produce temporary credentials with a maximum 1-hour TTL. A leaked session token is worthless after expiry.
+The Terraform providers use separate named AWS CLI profiles for the Management, Security, Logging, Network, and Workload accounts. Use IAM Identity Center profiles where available; do not store access keys in Terraform variables or the repository. `allowed_account_ids` in each provider makes Terraform fail if a profile resolves to the wrong account.
 
-## Permission Boundaries
+Human MFA must be required by IAM Identity Center or the upstream identity provider. AWS documents that `aws:MultiFactorAuthPresent` is absent for federated identities, including IAM Identity Center sessions; a `Bool` condition requiring that key in these role trust policies would block this login path. See [AWS global condition context keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html#condition-keys-multifactorauthpresent).
 
-A permission boundary is a managed IAM policy that sets the maximum permissions any role can have, regardless of what inline policies or managed policies are attached to it.
+## Cross-account role chain
 
-Without permission boundaries, a role with `iam:CreateRole` and `iam:AttachRolePolicy` can create a new role with `AdministratorAccess` — a complete privilege escalation within the account. With a permission boundary that excludes IAM write actions, this path is closed. The escalation attempt produces an `AccessDenied` error even if the role's inline policy allows those IAM actions.
-
-The permission boundary in this project:
-- Allows specific service actions needed for workload operation (EC2, S3, RDS, Lambda, etc.)
-- Explicitly denies all IAM write actions
-- Explicitly denies all Organizations API calls
-- Explicitly denies disabling GuardDuty, CloudTrail, Security Hub, or Config
-
-## Role Assumption Chain
-
-```
-Developer (MFA authenticated)
-    │
-    ▼ sts:AssumeRole + MFA condition
-Management Account Role
-    │
-    ▼ sts:AssumeRole + PrincipalOrgID condition + MFA age < 1hr
-Workload Account Role (scoped to specific service)
-    │   ← Permission boundary enforced here
-    ▼
-Resource Access (1-hour session, then expired)
+```text
+Human operator
+  └─ IAM Identity Center session in Management account (MFA enforced by IdP/Identity Center)
+      └─ sts:AssumeRole → SecurityAssumeWorkloadReadRole (Security account, max 1 hour)
+          └─ sts:AssumeRole → WorkloadSecurityReadRole (Workload account, max 1 hour)
+              └─ Read-only security evidence; workload permission boundary attached
 ```
 
-The `aws:PrincipalOrgID` condition on every cross-account trust policy ensures only principals from within this AWS Organization can assume the role. An external attacker who discovers a role ARN cannot assume it — the condition fails immediately.
+The Security role trusts the exact `management_operator_role_arn` supplied in local `terraform.tfvars`. The workload role trusts only the Security-account role created by this Terraform module. Both trust policies also require the principal to belong to this AWS Organization. The Security role's identity policy grants `sts:AssumeRole` only on the workload security-read role ARN.
 
-## Cross-Account Trust Conditions
+## Permission boundary
 
-Every trust policy in this architecture includes these conditions:
+`policies/iam/permission-boundaries.json` is an annotated example. Terraform removes underscore-prefixed explanatory fields before passing the policy to IAM. The resulting boundary:
 
-```json
-"Condition": {
-  "StringEquals": {
-    "aws:PrincipalOrgID": "o-XXXXXXXXXX"
-  },
-  "Bool": {
-    "aws:MultiFactorAuthPresent": "true"
-  },
-  "NumericLessThan": {
-    "aws:MultiFactorAuthAge": "3600"
-  }
-}
-```
+- Allows only the read operations required by the example role.
+- Explicitly denies the listed IAM privilege-escalation actions.
+- Denies changes to Organizations and the listed centralized security services.
 
-MFA must be present AND the MFA authentication must have occurred within the last hour. A valid session token from a user who authenticated 3 hours ago cannot assume cross-account roles — re-authentication is required.
-MFA must be present AND the MFA authentication must have occurred within the last hour. A valid session token from a user who authenticated 3 hours ago cannot assume cross-account roles — re-authentication is required.
+Terraform attaches this boundary to `WorkloadSecurityReadRole`. Creating the managed policy alone would not constrain any role. The repository does not yet prevent an administrator from creating other workload roles without a boundary; that stronger account-wide property needs a separate tested SCP/control.
+
+## Session lifetime and validation
+
+Both example roles have `max_session_duration = 3600`. Validate in a sandbox by checking the role trust and attached boundary in IAM, then use the Security role to assume the workload read role and confirm the read-only actions succeed while an explicitly denied IAM write action returns `AccessDenied`.
+
+Record the test principal, exact action, expected and observed result, timestamp, and sanitized screenshot in [`verification/README.md`](../verification/README.md). Do not test with root credentials or production roles.

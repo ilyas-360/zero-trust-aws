@@ -1,31 +1,38 @@
-# =============================================================================
-# terraform.tfvars.example
-# Copy to terraform.tfvars and fill in your actual account IDs
-# NEVER commit terraform.tfvars to Git — it contains sensitive account IDs
-# =============================================================================
+# Copy to terraform.tfvars. Keep terraform.tfvars and all state/plan files local.
+# Use existing AWS Organizations accounts dedicated to this isolated lab.
 
-aws_region        = "eu-west-1"
-organization_name = "my-zero-trust-org"
+aws_region         = "eu-west-1"
+management_profile = "management"
+security_profile   = "security"
+logging_profile    = "logging"
+network_profile    = "network"
+workload_profile   = "workload"
 
-allowed_regions = [
-  "eu-west-1",
-  "eu-west-3"
-]
-
-# Replace with your actual AWS account IDs
+# Replace all account IDs with your lab accounts. Do not commit real tfvars.
 management_account_id = "111111111111"
 security_account_id   = "222222222222"
 logging_account_id    = "333333333333"
 network_account_id    = "444444444444"
+workload_account_id   = "555555555555"
 
-workload_account_ids = [
-  "555555555555"
-]
+# Exact AWS IAM role ARN for your Management-account operator permission set.
+# Replace with the ARN returned by `aws iam list-roles` for your SSO profile.
+management_operator_role_arn = "arn:aws:iam::111111111111:role/REPLACE_WITH_EXACT_OPERATOR_ROLE_ARN"
 
-# Networking
-vpc_cidr_management = "10.0.0.0/16"
-vpc_cidr_security   = "10.1.0.0/16"
-vpc_cidr_workload   = "10.2.0.0/16"
+allowed_regions = ["eu-west-1"]
 
-# Logging
-log_retention_days = 365
+network_vpc_cidr       = "10.1.0.0/16"
+workload_vpc_cidr      = "10.2.0.0/16"
+workload_subnet_cidrs  = ["10.2.1.0/24", "10.2.2.0/24"]
+
+# The bucket name must be globally unique. Add an unpredictable suffix.
+cloudtrail_bucket_name = "zero-trust-cloudtrail-logs-555555555555-change-me"
+
+# Cost-aware defaults. Review pricing before enabling billable services.
+enable_nat_gateway      = false
+enable_guardduty        = false
+enable_securityhub      = false
+alert_email_address     = null
+s3_data_event_arns      = []
+flow_log_retention_days = 30
+vpn_customer_gateway    = null

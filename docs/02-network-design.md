@@ -1,23 +1,27 @@
 # 02 — Network Design
 
-## Core Principle: No Public Subnets in Workload Accounts
+> **Status: Terraform target for one workload account.** NAT and VPN are optional; NAT is disabled and VPN omitted by default. The module has not been applied or connectivity-tested.
 
-Every workload VPC uses private subnets only. There is no internet gateway attached to any workload VPC. All outbound internet traffic routes through a centralized NAT Gateway in the Network account via Transit Gateway.
+## Account and VPC scope
 
-This removes an entire class of attack surface. Even a completely open security group (0.0.0.0/0 inbound) in a workload account cannot expose a resource to internet traffic — the route simply does not exist. The misconfiguration has no effect.
+The root Terraform configuration manages one Network account VPC and one Workload account VPC. The workload VPC has two private subnets and no Internet Gateway. The Network VPC has a public subnet reserved for egress NAT and private subnets for its Transit Gateway attachment.
 
-## Transit Gateway Over VPC Peering
+## Transit Gateway sharing and routing
 
-VPC peering is a direct, non-transitive connection between two VPCs. At small scale it works. At 10+ VPCs it requires up to 45 peering connections and becomes unmanageable. More importantly, VPC peering has no central point to enforce routing policy.
+The Network account owns a Transit Gateway shared with the AWS Organization through AWS RAM. Shared VPC attachments are not automatically accepted; the Network account explicitly accepts the Workload attachment. Automatic route-table association and propagation are disabled.
 
-Transit Gateway acts as a hub router. All VPCs attach to it and traffic is routed per Transit Gateway route tables. This enables:
+Three TGW route tables are defined:
 
-- Per-account route table isolation — workload accounts can only reach Network account, not each other
-- Centralized egress — all internet traffic exits through a single inspectable point
-- Simple scaling — adding a new account means adding one TGW attachment, not N peering connections
+| Table | Association | Intended routes |
+|---|---|---|
+| Workload | Workload VPC attachment | Default route to the Network VPC only when NAT is enabled; optional learned on-prem routes when VPN is configured |
+| Egress | Network VPC attachment | Workload CIDR to the Workload attachment |
+| On-prem | VPN attachment when enabled | Workload CIDR to the Workload attachment |
 
-## Micro-Segmentation
+The one-AZ NAT option minimizes lab cost and is not highly available. With it disabled, the workload VPC has no default internet route; the Terraform avoids creating a default route that would blackhole at the TGW.
 
-Security Groups are the primary network control — they are stateful and applied per resource. NACLs are applied at the subnet level as a stateless backstop. The principle is defense-in-depth: a Security Group misconfiguration does not automatically result in a breach because the NACL enforces subnet-level rules independently.
+## Flow logs and segmentation limits
 
-Workload subnets are separated by function. Application tier subnets cannot communicate directly with data tier subnets — traffic must pass through a Security Group boundary that enforces least-privilege network access.
+The module enables VPC Flow Logs for the Network and Workload VPCs and writes each to CloudWatch Logs in its own account. It does not centralize those flow logs in the Logging account. The project does not define custom application Security Groups, NACLs, or tier-by-tier micro-segmentation rules. Those require a real test workload and documented allowed flows.
+
+Before enabling NAT, review current AWS pricing and the route-table plan. Before claiming connectivity, test both the expected path and a denied path and record the route tables, source/destination CIDRs, and Flow Log evidence.

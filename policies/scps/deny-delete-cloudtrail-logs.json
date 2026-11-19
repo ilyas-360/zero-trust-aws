@@ -1,0 +1,21 @@
+{
+  "_comment": "SCP: deny deletion of CloudTrail destination buckets and objects",
+  "_purpose": "Adds an organization-level guardrail on top of the destination bucket policy so member-account principals cannot delete CloudTrail objects or their destination bucket.",
+  "_applies_to": "All member accounts and the Security, Infrastructure, and Workload OUs. It does not restrict the Organizations management account.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyCloudTrailLogDeletion",
+      "Effect": "Deny",
+      "Action": [
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion",
+        "s3:DeleteBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::zero-trust-cloudtrail-logs-*",
+        "arn:aws:s3:::zero-trust-cloudtrail-logs-*/*"
+      ]
+    }
+  ]
+}

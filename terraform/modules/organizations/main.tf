@@ -1,104 +1,112 @@
-# =============================================================================
-# Module: organizations
-# =============================================================================
-# Creates the AWS Organizations structure:
-#   - Root organization
-#   - Organizational Units (Security, Infrastructure, Workload)
-#   - Service Control Policies attached at OU level
-#
-# Design decision: SCPs are applied at the OU level, not account level.
-# This means new accounts added to an OU automatically inherit all guardrails
-# without manual policy attachment.
-# =============================================================================
-
-resource "aws_organizations_organization" "root" {
-  aws_service_access_principals = [
-    "cloudtrail.amazonaws.com",
-    "config.amazonaws.com",
-    "guardduty.amazonaws.com",
-    "securityhub.amazonaws.com",
-    "sso.amazonaws.com",
-  ]
-
-  feature_set = "ALL" # Required for SCP enforcement
+terraform {
+  required_providers {
+    aws = {
+      source                = "hashicorp/aws"
+      configuration_aliases = [aws.management]
+    }
+  }
 }
 
-# -----------------------------------------------------------------------------
-# Organizational Units
-# -----------------------------------------------------------------------------
+locals {
+  root_policies = {
+    deny_root_usage = jsondecode(file("${path.module}/../../../policies/scps/deny-root-usage.json"))
+    deny_cloudtrail = jsondecode(file("${path.module}/../../../policies/scps/deny-disable-cloudtrail.json"))
+    deny_region     = jsondecode(file("${path.module}/../../../policies/scps/deny-region-restriction.json"))
+    require_imdsv2  = jsondecode(file("${path.module}/../../../policies/scps/enforce-imdsv2.json"))
+    deny_log_delete = jsondecode(file("${path.module}/../../../policies/scps/deny-delete-cloudtrail-logs.json"))
+  }
+
+  clean_policies = {
+    for name, policy in local.root_policies : name => {
+      for key, value in policy : key => value if !startswith(key, "_")
+    }
+  }
+
+  region_policy = merge(local.clean_policies.deny_region, {
+    Statement = [
+      for statement in local.clean_policies.deny_region.Statement :
+      statement.Sid == "DenyNonApprovedRegions" ? merge(statement, {
+        Condition = merge(statement.Condition, {
+          StringNotEquals = merge(statement.Condition.StringNotEquals, {
+            "aws:RequestedRegion" = var.allowed_regions
+          })
+        })
+      }) : statement
+    ]
+  })
+
+  policy_documents = merge(local.clean_policies, {
+    deny_region = local.region_policy
+  })
+}
+
+resource "aws_organizations_organization" "root" {
+  provider = aws.management
+
+  aws_service_access_principals = [
+    "cloudtrail.amazonaws.com",
+    "guardduty.amazonaws.com",
+    "securityhub.amazonaws.com",
+  ]
+
+  enabled_policy_types = ["SERVICE_CONTROL_POLICY"]
+  feature_set         = "ALL"
+}
 
 resource "aws_organizations_organizational_unit" "security" {
+  provider  = aws.management
   name      = "Security"
   parent_id = aws_organizations_organization.root.roots[0].id
 }
 
 resource "aws_organizations_organizational_unit" "infrastructure" {
+  provider  = aws.management
   name      = "Infrastructure"
   parent_id = aws_organizations_organization.root.roots[0].id
 }
 
 resource "aws_organizations_organizational_unit" "workload" {
+  provider  = aws.management
   name      = "Workload"
   parent_id = aws_organizations_organization.root.roots[0].id
 }
 
-# -----------------------------------------------------------------------------
-# Service Control Policies
-# -----------------------------------------------------------------------------
+resource "aws_organizations_policy" "guardrails" {
+  provider = aws.management
+  for_each = local.policy_documents
 
-resource "aws_organizations_policy" "deny_root_usage" {
-  name        = "DenyRootUsage"
-  description = "Blocks all API calls made with root account credentials"
+  name = {
+    deny_root_usage = "DenyRootUsage"
+    deny_cloudtrail = "DenyCloudTrailModification"
+    deny_region     = "DenyNonApprovedRegions"
+    require_imdsv2  = "RequireIMDSv2"
+    deny_log_delete = "DenyCloudTrailLogDeletion"
+  }[each.key]
+
+  description = "Zero Trust guardrail: ${each.key}"
   type        = "SERVICE_CONTROL_POLICY"
-  content     = file("${path.module}/../../../policies/scps/deny-root-usage.json")
+  content     = jsonencode(each.value)
 }
-
-resource "aws_organizations_policy" "deny_disable_cloudtrail" {
-  name        = "DenyDisableCloudTrail"
-  description = "Prevents any principal from disabling or modifying CloudTrail"
-  type        = "SERVICE_CONTROL_POLICY"
-  content     = file("${path.module}/../../../policies/scps/deny-disable-cloudtrail.json")
-}
-
-resource "aws_organizations_policy" "deny_region_restriction" {
-  name        = "DenyNonApprovedRegions"
-  description = "Restricts all API calls to approved regions only"
-  type        = "SERVICE_CONTROL_POLICY"
-  content     = file("${path.module}/../../../policies/scps/deny-region-restriction.json")
-}
-
-resource "aws_organizations_policy" "enforce_imdsv2" {
-  name        = "EnforceIMDSv2"
-  description = "Forces IMDSv2 on all EC2 instances — prevents SSRF credential theft"
-  type        = "SERVICE_CONTROL_POLICY"
-  content     = file("${path.module}/../../../policies/scps/enforce-imdsv2.json")
-}
-
-# -----------------------------------------------------------------------------
-# Attach SCPs to all OUs
-# -----------------------------------------------------------------------------
 
 locals {
-  all_ou_ids = [
-    aws_organizations_organizational_unit.security.id,
-    aws_organizations_organizational_unit.infrastructure.id,
-    aws_organizations_organizational_unit.workload.id,
-  ]
-
-  scp_ids = [
-    aws_organizations_policy.deny_root_usage.id,
-    aws_organizations_policy.deny_disable_cloudtrail.id,
-    aws_organizations_policy.deny_region_restriction.id,
-    aws_organizations_policy.enforce_imdsv2.id,
-  ]
+  ou_ids = {
+    security      = aws_organizations_organizational_unit.security.id
+    infrastructure = aws_organizations_organizational_unit.infrastructure.id
+    workload      = aws_organizations_organizational_unit.workload.id
+  }
+  attachment_targets = setunion(toset(values(local.ou_ids)), toset(var.member_account_ids))
+  attachment_matrix  = setproduct(local.attachment_targets, toset(keys(aws_organizations_policy.guardrails)))
 }
 
-resource "aws_organizations_policy_attachment" "scp_attachments" {
+resource "aws_organizations_policy_attachment" "guardrails" {
+  provider = aws.management
   for_each = {
-    for pair in setproduct(local.all_ou_ids, local.scp_ids) :
-    "${pair[0]}-${pair[1]}" => { ou_id = pair[0], scp_id = pair[1] }
+    for pair in local.attachment_matrix : "${pair[0]}-${pair[1]}" => {
+      target_id = pair[0]
+      policy_id = aws_organizations_policy.guardrails[pair[1]].id
+    }
   }
 
-  policy_id = each.value.scp_id
-  target_id = each.value.ou_id
+  policy_id = each.value.policy_id
+  target_id = each.value.target_id
 }

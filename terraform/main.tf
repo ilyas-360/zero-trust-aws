@@ -1,16 +1,3 @@
-
-# =============================================================================
-# Zero Trust Multi-Account AWS Security Architecture
-# Root Terraform Configuration
-# =============================================================================
-# This is the root entry point. It calls each module in dependency order:
-# 1. Organizations (account structure + SCPs)
-# 2. IAM (permission boundaries + role chains)
-# 3. Networking (VPCs + Transit Gateway)
-# 4. Security (GuardDuty + Security Hub)
-# 5. Logging (CloudTrail + S3)
-# =============================================================================
-
 terraform {
   required_version = ">= 1.5.0"
 
@@ -20,90 +7,92 @@ terraform {
       version = "~> 5.0"
     }
   }
-
-  backend "s3" {
-    # Remote state stored in S3 with DynamoDB locking
-    # Configuration in backend.tf
-  }
 }
 
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = {
-      Project     = "zero-trust-aws"
-      Environment = "production"
-      ManagedBy   = "terraform"
-    }
-  }
-}
-
-# -----------------------------------------------------------------------------
-# Module: Organizations + SCPs
-# Sets up AWS Organizations, OU structure, and attaches Service Control Policies
-# -----------------------------------------------------------------------------
 module "organizations" {
   source = "./modules/organizations"
 
-  organization_name = var.organization_name
-  allowed_regions   = var.allowed_regions
+  providers = {
+    aws.management = aws.management
+  }
+
+  allowed_regions = var.allowed_regions
+  member_account_ids = [
+    var.security_account_id,
+    var.logging_account_id,
+    var.network_account_id,
+    var.workload_account_id,
+  ]
 }
 
-# -----------------------------------------------------------------------------
-# Module: IAM
-# Deploys permission boundaries and cross-account role assumption chains
-# -----------------------------------------------------------------------------
 module "iam" {
   source = "./modules/iam"
 
-  organization_id    = module.organizations.organization_id
-  management_account = var.management_account_id
-  security_account   = var.security_account_id
-  workload_accounts  = var.workload_account_ids
+  providers = {
+    aws.security = aws.security
+    aws.workload = aws.workload
+  }
 
-  depends_on = [module.organizations]
+  organization_id      = module.organizations.organization_id
+  management_account_id = var.management_account_id
+  security_account_id  = var.security_account_id
+  workload_account_id  = var.workload_account_id
+  management_operator_role_arn = var.management_operator_role_arn
 }
 
-# -----------------------------------------------------------------------------
-# Module: Networking
-# Deploys VPCs, Transit Gateway, and route table isolation per account
-# -----------------------------------------------------------------------------
 module "networking" {
   source = "./modules/networking"
 
-  vpc_cidr_management = var.vpc_cidr_management
-  vpc_cidr_security   = var.vpc_cidr_security
-  vpc_cidr_workload   = var.vpc_cidr_workload
+  providers = {
+    aws.management = aws.management
+    aws.network = aws.network
+    aws.workload = aws.workload
+  }
+
+  organization_arn = module.organizations.organization_arn
   aws_region          = var.aws_region
+  network_account_id = var.network_account_id
+  workload_account_id = var.workload_account_id
+  network_vpc_cidr = var.network_vpc_cidr
+  workload_vpc_cidr = var.workload_vpc_cidr
+  workload_subnet_cidrs = var.workload_subnet_cidrs
+  enable_nat_gateway = var.enable_nat_gateway
+  flow_log_retention_days = var.flow_log_retention_days
+  customer_gateway_public_ip = try(var.vpn_customer_gateway.public_ip, null)
+  customer_gateway_bgp_asn   = try(var.vpn_customer_gateway.bgp_asn, 65000)
+  onprem_cidr               = try(var.vpn_customer_gateway.onprem_cidr, null)
+}
+
+module "security" {
+  source = "./modules/security"
+
+  providers = {
+    aws.management = aws.management
+    aws.security   = aws.security
+  }
+
+  security_account_id = var.security_account_id
+  aws_region          = var.aws_region
+  alert_email_address = var.alert_email_address
+  enable_guardduty    = var.enable_guardduty
+  enable_securityhub  = var.enable_securityhub
 
   depends_on = [module.organizations]
 }
 
-# -----------------------------------------------------------------------------
-# Module: Security
-# Deploys GuardDuty (delegated admin) and Security Hub aggregation
-# -----------------------------------------------------------------------------
-module "security" {
-  source = "./modules/security"
-
-  security_account_id = var.security_account_id
-  member_accounts     = var.workload_account_ids
-  organization_id     = module.organizations.organization_id
-
-  depends_on = [module.organizations, module.iam]
-}
-
-# -----------------------------------------------------------------------------
-# Module: Logging
-# Deploys organization CloudTrail, VPC Flow Logs, and immutable S3 bucket
-# -----------------------------------------------------------------------------
 module "logging" {
   source = "./modules/logging"
 
-  logging_account_id  = var.logging_account_id
-  organization_id     = module.organizations.organization_id
-  log_retention_days  = var.log_retention_days
+  providers = {
+    aws.management = aws.management
+    aws.logging    = aws.logging
+  }
+
+  management_account_id = var.management_account_id
+  logging_account_id    = var.logging_account_id
+  organization_id       = module.organizations.organization_id
+  cloudtrail_bucket_name = var.cloudtrail_bucket_name
+  s3_data_event_arns     = var.s3_data_event_arns
 
   depends_on = [module.organizations]
 }

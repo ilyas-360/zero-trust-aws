@@ -1,209 +1,96 @@
-# Zero Trust Multi-Account AWS Security Architecture
+# Zero Trust AWS Multi-Account Lab
 
-> **Production-grade Zero Trust environment** simulating a real enterprise security posture across a multi-account AWS landing zone — with hybrid on-premises connectivity, centralized observability, and defense-in-depth at every layer.
-
-![Status](https://img.shields.io/badge/Status-Actively%20Building-blue)
 ![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC)
 ![AWS](https://img.shields.io/badge/Cloud-AWS-FF9900)
-![Zero Trust](https://img.shields.io/badge/Security-Zero%20Trust-red)
-![SAA](https://img.shields.io/badge/AWS-Solutions%20Architect%20Associate-FF9900)
+![Status](https://img.shields.io/badge/Status-Terraform%20implementation%20in%20review-orange)
 
-**AWS Certified Solutions Architect – Associate (SAA-C03) | CCNA | fourth-year Cybersecurity Engineering Student, ENSA Oujda**
+This portfolio project implements a **Terraform design for a five-account AWS security lab**: organization guardrails, a constrained cross-account audit role, a shared Transit Gateway, optional centralized egress/VPN, an organization CloudTrail, and optional delegated detection services.
 
----
+> **Status (19 November 2026):** Terraform source and CI checks are present and being reviewed. No AWS deployment, successful plan/apply, screenshot, or end-to-end security test is evidenced here. Treat this as an implementation candidate, not a deployed or production-ready landing zone. Run the validation workflow and review a sandbox plan before any apply.
 
-## What This Is
+## What this repository implements
 
-Most AWS environments are flat and over-permissioned — one compromised credential can cascade across the entire organization.
+| Area | Terraform scope | Defaults and limits |
+|---|---|---|
+| AWS Organizations | Creates/manages org policy support, three OU containers, five SCPs, direct member-account and OU attachments | Requires a dedicated existing org; does not create or move accounts; SCPs do not restrict the management account |
+| Account providers | Separate Management, Security, Logging, Network, and Workload aliases with account-ID guards | Uses local AWS CLI profiles; operator permission sets and MFA are configured outside Terraform |
+| IAM | One Security-to-Workload read-only role chain and one attached permission boundary | Example roles only; does not enforce a boundary on every workload role |
+| Networking | Network-account TGW, separate TGW route tables, one private Workload VPC, one Network VPC, RAM sharing, Flow Logs | NAT and Site-to-Site VPN are optional; NAT is single-AZ; one workload VPC only |
+| Audit logging | Management-account multi-Region organization trail, Logging-account versioned SSE-S3 bucket and delete-deny policy | S3 data events are off unless explicit object ARNs are configured; no S3 Object Lock |
+| Detection | Security-account GuardDuty and Security Hub organization configuration; EventBridge-to-SNS alerting | GuardDuty and Security Hub default off; email alerts require a configured address and subscription confirmation |
+| AWS Config | Not implemented | No recorder, delivery channel, or aggregator is created |
 
-This project builds the opposite: a multi-account AWS environment where **every trust assumption is explicit, every permission is scoped to minimum viability, and every account is a hard boundary** — not a naming convention.
+The project creates resource code, not proof of runtime behavior. See [the implementation roadmap](docs/00-implementation-roadmap.md), [account prerequisites](docs/01-account-strategy.md), and [the evidence procedure](verification/README.md).
 
-It directly answers the question recruiters and interviewers ask:
-
-> *"Can you actually build secure cloud infrastructure — or just describe it?"*
-
-This builds directly on my previous [CCNA Enterprise Hybrid Networking Lab](https://github.com/ilyas-360/AWS-Cloud-Security-Foundations).
-
----
-
-## Architecture Overview
+## Architecture
 
 ```mermaid
 flowchart TD
-    Org[AWS Organizations<br/>Root + SCPs] --> Mgmt[Management Account<br/>Billing · SCPs · Root MFA enforced]
-    Org --> Sec[Security Account<br/>GuardDuty Admin · Security Hub Aggregator]
-    Org --> Log[Logging Account<br/>Immutable CloudTrail · VPC Flow Logs]
-    Org --> Net[Network Account<br/>Transit Gateway · Centralized Egress]
-    Org --> Work[Workload Account<br/>Private VPCs · Permission Boundaries]
-
-    Net <-->|Site-to-Site VPN| OnPrem[On-Prem Simulation<br/>EC2 Customer Gateway]
-    Sec -->|Aggregates findings| Hub[Security Hub Dashboard]
-    Log -->|Organization Trail| S3[Immutable S3<br/>deny-delete SCP]
+    Org["Existing AWS Organization"] --> Mgmt["Management"]
+    Org --> Sec["Security"]
+    Org --> Log["Logging"]
+    Org --> Net["Network"]
+    Org --> Work["One Workload account"]
+    Mgmt -->|"SCPs and delegated admins"| Sec
+    Mgmt -->|"Organization trail"| Log
+    Work -->|"TGW attachment"| Net
+    Sec -->|"Cross-account audit role"| Work
+    Net -->|"Optional VPN"| VPN["Customer gateway"]
 ```
 
-| Account | Purpose | Key Controls |
-|---|---|---|
-| **Management** | Billing, Organizations, SCP enforcement | Root MFA enforced, no workloads run here |
-| **Security** | GuardDuty delegated admin, Security Hub aggregator | Read-only access across all accounts |
-| **Logging** | Immutable CloudTrail, VPC Flow Logs | Deny-delete SCP on S3 — attackers cannot erase logs |
-| **Network** | Transit Gateway, centralized egress | No internet gateway in workload accounts |
-| **Workload** | Application resources | Permission boundaries on all roles, private subnets only |
+The Organization and five accounts must already exist and be dedicated to this lab. Terraform creates the OU containers but intentionally does not place accounts in them. Optional billable services are disabled by default. This is a learning/portfolio architecture, not a production landing zone: it has one workload VPC, a single-AZ NAT option, no AWS Config, no centralized Flow Log destination, and no application-specific security-group rules.
 
-> Full account strategy and OU design: [docs/01-account-strategy.md](docs/01-account-strategy.md)
+## Repository map
 
----
-
-## Zero Trust Pillars
-
-| Pillar | Implementation |
-|---|---|
-| **Never trust, always verify** | MFA + `aws:PrincipalOrgID` enforced on every cross-account role assumption |
-| **Least privilege everywhere** | Permission boundaries cap maximum permissions on all workload roles |
-| **Assume breach** | Blast radius contained per account — compromised workload cannot touch logging or security tooling |
-| **Just-in-time access** | Role sessions capped at 1 hour — no persistent credentials, no long-lived access keys |
-| **Continuous verification** | GuardDuty + CloudTrail + Security Hub aggregating findings across all accounts in real time |
-
-> Deep dive: [docs/04-zero-trust-pillars.md](docs/04-zero-trust-pillars.md)
-
----
-
-## Key Security Controls
-
-### Service Control Policies (SCPs)
-Hard guardrails at the OU level — cannot be overridden by any account, including root:
-
-| Policy | Threat Closed |
-|---|---|
-| `deny-root-usage.json` | Blocks all API calls from root credentials |
-| `deny-disable-cloudtrail.json` | Makes the audit trail immutable — attackers cannot erase their tracks |
-| `deny-region-restriction.json` | Restricts all activity to approved regions |
-| `enforce-imdsv2.json` | Forces IMDSv2 on EC2 — eliminates SSRF-to-credential-theft attacks |
-
-> Annotated policy files: [policies/scps/](policies/scps/)
-
-### IAM Architecture
-- **Permission boundaries** cap maximum permissions on every workload role — closes IAM privilege escalation paths
-- **Role assumption chains** replace direct IAM user access — no persistent access keys anywhere
-- **Cross-account trust** scoped with `aws:PrincipalOrgID` — external accounts categorically excluded
-
-> Role assumption chain walkthrough: [docs/03-iam-design.md](docs/03-iam-design.md)
-
-### Network Micro-Segmentation
-- Workload VPCs have **no public subnets** — all egress routes through centralized NAT in Network account
-- Security Groups as stateful primary control, NACLs as stateless backstop
-- Transit Gateway with per-account route table isolation — workload accounts cannot reach each other directly
-
-### Hybrid Connectivity
-On-premises simulated via EC2 customer gateway connected through **Site-to-Site VPN** to Transit Gateway in the Network account — replicating the real enterprise pattern of controlled, audited hybrid access.
-
-> VPN configuration and routing: [docs/05-hybrid-connectivity.md](docs/05-hybrid-connectivity.md)
-
-### Observability & Detection
-
-```
-All Accounts
-    │
-    ├── CloudTrail (Organization Trail) ──────► Immutable S3 (Logging Account, deny-delete SCP)
-    │
-    ├── GuardDuty (delegated admin) ──────────► Security Account (aggregated findings)
-    │                                                │
-    ├── VPC Flow Logs ───────────────────────────────┤
-    │                                                ▼
-    └── AWS Config ──────────────────────────────► Security Hub Dashboard
+```text
+.
+├── ARCHITECTURE.md
+├── docs/                         # Design, constraints, and implementation roadmap
+├── diagrams/README.md            # Status of planned editable diagrams
+├── policies/
+│   ├── iam/                      # Annotated boundary and trust-chain examples
+│   └── scps/                     # Annotated SCP JSON; Terraform strips root "_" metadata
+├── terraform/
+│   ├── main.tf                   # Root module wiring and provider aliases
+│   ├── providers.tf              # Five account-specific AWS CLI profiles
+│   ├── terraform.tfvars.example  # Safe placeholder configuration
+│   └── modules/                  # Organizations, IAM, networking, security, logging
+├── verification/                 # Commands, screenshot checklist, and test record template
+└── .github/workflows/            # Terraform formatting and validation on pull requests
 ```
 
-Key design principle: **detection that can be disabled by an attacker is not detection.** GuardDuty findings aggregate to the Security account — a compromised workload account cannot suppress them.
+## Quick local structural checks
 
-> Detection scenarios and findings: [docs/06-security-observability.md](docs/06-security-observability.md)
-
----
-
-## Implementation Status *(April 2026 — Actively Building)*
-
-| Component | Status | Notes |
-|---|---|---|
-| Account structure + OU design | ✅ Complete | Diagrams finalized |
-| SCP policies (4 core guardrails) | ✅ Complete | Annotated JSON in `policies/scps/` |
-| IAM permission boundaries | 🔄 In Progress | Terraform module started |
-| VPC + micro-segmentation | 🔄 In Progress | Private-only topology designed |
-| Transit Gateway + routing | 🔄 In Progress | Per-account route tables designed |
-| Site-to-Site VPN | 🔄 In Progress | Configuration documented |
-| GuardDuty + Security Hub | 🔄 In Progress | Delegated admin design complete |
-| CloudTrail organization trail | 🔄 In Progress | Logging account target configured |
-| Terraform IaC modules | 🔄 In Progress | Organizations module started |
-| Verification + screenshots | 🔄 In Progress | Added daily as I deploy |
-| GitHub Actions CI | 📋 Planned | `terraform plan` on PR |
-| 10x scale extensions | 📋 Planned | Control Tower, IPAM, Network Firewall |
-
-Daily updates pushed as Terraform modules are completed and deployment screenshots are added.
-
----
-
-## Quick Start
+Use a dedicated AWS sandbox and the [detailed setup procedure](verification/README.md). First copy the example variables file, replace placeholders locally, configure the five AWS CLI profiles, and authenticate. From the repository root:
 
 ```bash
-git clone https://github.com/ilyas-360/zero-trust-aws.git
-cd zero-trust-aws
-
-# Start with the architecture
-cat docs/01-account-strategy.md
-
-# Review security controls
-ls policies/scps/
-
-# Explore Terraform modules
-cd terraform/modules/
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+cd terraform
+terraform fmt -recursive
+terraform init -backend=false
+terraform validate
 ```
 
-> **Terraform deployment** in progress — full `terraform plan` output expected by end of April 2026.
-> **Cost note:** Resources are spun up for validation and destroyed immediately. The value is in reproducible IaC.
+These commands do not deploy infrastructure. A plan requires valid AWS sessions and account IDs:
 
----
-
-## What I Would Change at 10x Scale
-
-> Full analysis: [docs/07-scale-tradeoffs.md](docs/07-scale-tradeoffs.md)
-
-At 50+ accounts, several manual processes become bottlenecks:
-
-- **AWS Control Tower** — automated account vending, new accounts from template in minutes
-- **IAM Identity Center** — single SSO entry point with permission sets replacing manual role chains
-- **Centralized IPAM** — automated CIDR allocation across hundreds of VPCs with no overlap
-- **AWS Network Firewall** — deep packet inspection at egress VPC, replacing Security Group-only controls
-- **Delegated administration** — every security service operated independently from the Security account
-
----
-
-## Repository Structure
-
-```
-zero-trust-aws/
-├── diagrams/               # Architecture visuals (PNG + draw.io source)
-├── terraform/
-│   ├── modules/            # organizations · iam · networking · security · logging
-│   └── environments/       # management · security · logging · network · workload
-├── policies/
-│   ├── scps/               # Annotated SCP JSON files
-│   ├── iam/                # Permission boundaries + role assumption chains
-│   └── vpc/                # NACL rules
-├── docs/                   # Numbered design decisions (01 → 07)
-├── verification/           # Screenshots, test results, GuardDuty findings
-└── .github/workflows/      # CI — terraform plan on PR (coming)
+```bash
+terraform plan -var-file=terraform.tfvars
 ```
 
----
+**Do not run `terraform apply` until you have reviewed the entire plan, confirmed all five caller identities, and confirmed the target organization contains only dedicated sandbox accounts.** Import existing Organizations/OU resources first. Never commit `terraform.tfvars`, state, plan files, access keys, or unsanitized screenshots.
+
+## Evidence status
+
+- Design documents and Terraform source: present; subject to review and validation.
+- GitHub Actions format/validate workflow: present; a passing run is required before claiming validation.
+- AWS resources: not evidenced as deployed.
+- Console screenshots and allow/deny tests: not recorded.
+- Editable architecture diagram source/exports: not present yet.
+
+Use the labels **designed**, **implemented**, and **validated** accurately. A policy file or a successful plan does not prove an AWS control works. For exact screenshots and safe tests, follow [verification/README.md](verification/README.md).
 
 ## Author
 
-**Ilyas Benkhadra**
-Final-year Cybersecurity Engineering student, ENSA Oujda
-Specialization: Cloud Security Engineering
+**Ilyas Benkhadra** — Cybersecurity Engineering, ENSA Oujda; AWS Certified Solutions Architect – Associate (SAA-C03); CCNA.
 
-**AWS Certified Solutions Architect – Associate (SAA-C03)** | March 2026
-**CCNA** | Enterprise hybrid networking foundation
-📍 Morocco — Open to Summer 2026 internships in Cloud Security, DevSecOps, Infrastructure Security
-
-Previous project: [AWS-Cloud-Security-Foundations](https://github.com/ilyas-360/AWS-Cloud-Security-Foundations) — CCNA Enterprise Hybrid Lab
-
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5)](https://linkedin.com/in/YOUR_LINKEDIN)
-[![GitHub](https://img.shields.io/badge/GitHub-ilyas--360-181717)](https://github.com/ilyas-360)
+Portfolio: [github.com/ilyas-360](https://github.com/ilyas-360)

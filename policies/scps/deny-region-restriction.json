@@ -2,7 +2,7 @@
   "_comment": "SCP: Deny Non-Approved Regions",
   "_purpose": "Restricts all API activity to approved regions only. Any action attempted in a non-approved region is denied regardless of IAM permissions. This limits the blast radius of a compromise to regions where you have visibility and controls deployed.",
   "_threat_closed": "Data exfiltration to unmonitored regions, shadow infrastructure in regions with no GuardDuty/CloudTrail coverage, compliance violations.",
-  "_design_note": "NotAction exemptions are required for global services (IAM, STS, S3, CloudFront, Route53, Support, Organizations) that do not operate in a specific region. Without these exemptions, IAM operations and cross-account role assumptions would be blocked.",
+  "_design_note": "NotAction exempts global services that may lack an ordinary regional endpoint (IAM, STS, CloudFront, Route 53, Support, Organizations, Account, and Global Accelerator). S3 is intentionally not exempted: its regional resources remain subject to the Region guardrail.",
   "Version": "2012-10-17",
   "Statement": [
     {
@@ -11,7 +11,6 @@
       "NotAction": [
         "iam:*",
         "sts:*",
-        "s3:*",
         "cloudfront:*",
         "route53:*",
         "support:*",

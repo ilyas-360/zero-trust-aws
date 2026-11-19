@@ -1,56 +1,34 @@
 # 06 — Security Observability
 
-## Detection Pipeline
+> **Status: CloudTrail and Flow Logs are in Terraform; GuardDuty and Security Hub are optional.** No AWS deployment or finding aggregation has been captured yet. Do not claim live detection until it is enabled and verified.
 
-```
-Event Source              Collection                Aggregation           Action
-─────────────────────     ─────────────────────     ─────────────────     ──────────────
-API calls (all accounts)  CloudTrail (org trail)    S3 logging account    Athena queries
-Network traffic           VPC Flow Logs             CloudWatch Logs       Metric alarms
-Threat intelligence       GuardDuty (all accounts)  Security Hub          EventBridge → SNS
-Config changes            AWS Config                Security Hub          Compliance score
-```
+## Data paths
 
-## Why GuardDuty Delegated Admin Lives in the Security Account
+| Source | Collection | Destination | Current code status |
+|---|---|---|---|
+| AWS API management events | Multi-Region organization CloudTrail created from the Management account | Versioned, encrypted S3 bucket in the Logging account | Implemented in Terraform; delivery not verified |
+| Network traffic in Network VPC | VPC Flow Logs | CloudWatch Logs in Network account | Implemented in Terraform; delivery not verified |
+| Network traffic in Workload VPC | VPC Flow Logs | CloudWatch Logs in Workload account | Implemented in Terraform; delivery not verified |
+| Threat findings | GuardDuty delegated admin in Security account | Security account detector and optional EventBridge/SNS alert | Optional and disabled by default |
+| Security posture | Security Hub admin in Security account; FSBP and CIS 1.4.0 subscriptions | Security account | Optional and disabled by default |
+| Configuration drift | AWS Config | — | Not implemented in this Terraform project |
 
-GuardDuty findings from all member accounts aggregate to the Security account automatically. An attacker who fully compromises a workload account sees their own GuardDuty findings generated — but cannot suppress or delete them. The findings are owned by the Security account detector, not the workload account.
+## Organization CloudTrail
 
-This is the most important design decision in the observability layer. **Detection that can be disabled by an attacker is not detection.**
+The `logging` module creates the destination bucket in the Logging account and the organization trail in the Management account. The bucket policy includes CloudTrail's bucket ACL check and a write permission scoped to `AWSLogs/<organization-id>/*`, the management account, and this trail. S3 public access is blocked, default encryption and versioning are enabled, and deletion is denied by the bucket policy. A separate SCP denies deletion of matching log buckets and objects in member accounts.
 
-## CloudTrail: Immutable Organization Trail
+These controls provide deletion protection for member-account principals, but the Management account is not restricted by SCPs, and the bucket does not use S3 Object Lock. Describe the storage as **deletion-protected**, not immutable. Log-file validation detects changes to delivered CloudTrail log files; it does not prevent an authorized administrator from changing configuration.
 
-A single organization trail captures API calls from all accounts across all regions. Log files land in the Logging account S3 bucket which has:
+CloudTrail S3 data events are disabled unless explicit object ARNs are listed in `s3_data_event_arns`. This avoids enabling high-volume data-event logging for every bucket by default.
 
-1. A deny-delete S3 bucket policy (resource-level protection)
-2. A deny-disable-cloudtrail SCP (organizational-level protection)
-3. Log file validation enabled (SHA-256 hash of each log file — tampering is detectable)
+## GuardDuty and Security Hub
 
-An attacker would need to compromise the Logging account AND successfully modify an SCP from the Management account to destroy the audit trail. Both independently protect against log deletion.
+Set `enable_guardduty = true` to register the Security account as delegated administrator, enable its detector, and configure organization auto-enablement. Set `enable_securityhub = true` to register Security Hub administration, enable it in the Security account, configure member auto-enablement, create an aggregator configured to link all Regions, and subscribe in the configured Region to AWS Foundational Security Best Practices and CIS AWS Foundations Benchmark 1.4.0. The Terraform does not enable GuardDuty or Security Hub in every allowed Region, so do not infer full multi-Region detection from the aggregator setting. Security Hub `auto_enable` applies to new organization accounts; existing accounts need enrollment/enablement handled separately. Security Hub control findings also require AWS Config recording, which this repository does not configure.
 
-## Sample Detection Scenario
+If GuardDuty is enabled, an EventBridge rule sends severity 7+ findings to SNS. Set `alert_email_address` to create an email subscription; the recipient must confirm the SNS subscription. Without a confirmed subscription, the topic has no email recipient. These services are billable, so review pricing and sandbox scope before enabling them.
 
-**Scenario: EC2 instance credentials used from external IP**
+## Validation evidence
 
-1. Attacker exploits web app vulnerability, retrieves EC2 instance role credentials via metadata endpoint
-2. Attacker uses credentials from their IP (outside VPC CIDR)
-3. GuardDuty generates `UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration.InsideAWS` or `UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration.OutsideAWS`
-4. Finding aggregates to Security account Security Hub within minutes
-5. EventBridge rule matches HIGH severity finding → SNS alert to security team
-6. CloudTrail records exact API calls made with the stolen credential, source IP, resource ARNs
-7. VPC Flow Logs show network path of original exfiltration attempt
+After deployment, check **CloudTrail → Trails** in the Management account, then verify a new object appears in the Logging account bucket. Check **VPC → Your VPCs → select VPC → Flow logs** and **CloudWatch → Log groups** in each source account. If enabled, capture **GuardDuty → Accounts/Findings** and **Security Hub → Findings** in the Security account, including a test member-account finding.
 
-**What the attacker cannot do:**
-- Delete CloudTrail records of their actions (SCP-protected, separate account)
-- Suppress the GuardDuty finding (Security account ownership)
-- Use credentials beyond 1-hour session expiry
-- Reach other accounts with the stolen EC2 role credentials (PrincipalOrgID + MFA conditions block cross-account assumption)
-
-## Security Hub Standards
-
-Two compliance frameworks are continuously evaluated:
-
-**AWS Foundational Security Best Practices** — AWS-managed checks covering IAM, S3, EC2, RDS, and other services. Findings appear within minutes of a configuration change.
-
-**CIS AWS Foundations Benchmark** — Industry-standard baseline controls. Provides a compliance score visible in the Security Hub dashboard.
-
-Failed checks generate findings that aggregate alongside GuardDuty detections — giving a unified view of both active threats and configuration drift.
+Add timestamps and observed results to `verification/security-validation.md`. Finding delivery latency and event routing must be measured in the sandbox; do not describe them as real-time without evidence.

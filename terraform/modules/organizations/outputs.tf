@@ -3,6 +3,11 @@ output "organization_id" {
   value       = aws_organizations_organization.root.id
 }
 
+output "organization_arn" {
+  description = "AWS Organizations ARN for the AWS RAM resource share."
+  value       = aws_organizations_organization.root.arn
+}
+
 output "root_id" {
   description = "The root OU ID"
   value       = aws_organizations_organization.root.roots[0].id

@@ -1,48 +1,21 @@
 # 05 — Hybrid Connectivity
 
-## Architecture
+> **Status: optional Terraform configuration.** No VPN is created when `vpn_customer_gateway = null`, which is the example default. The repository does not deploy or configure a customer gateway appliance.
 
-On-premises environment is simulated using an EC2 instance configured as a customer gateway device. This replicates a real enterprise scenario where physical on-premises infrastructure connects to AWS without going through the public internet.
+## Implemented Terraform scope
 
-```
-On-Premises (simulated)                         AWS
-──────────────────────                          ──────────────────────────────
-EC2 Customer Gateway                            Network Account
-├── BGP ASN: 65000               ◄── VPN ───►  Transit Gateway
-├── Tunnel 1: IKEv2, AES-256-GCM               ├── TGW Route Table
-├── Tunnel 2: IKEv2, AES-256-GCM (redundant)   │   ├── on-prem → workload VPC
-└── Routes advertised: 192.168.0.0/16          └── Workload VPC attachment
-```
+When a customer-gateway object is supplied, Terraform creates an AWS Customer Gateway using its public IP and BGP ASN, a Site-to-Site VPN attached to the Network-account Transit Gateway, a VPN route-table association, and route propagation for learned on-premises prefixes. The Workload VPC gets a route for the configured on-premises CIDR.
 
-## Why Terminate VPN at Transit Gateway
+This requires a reachable external IPsec/BGP device. It can be a physical lab device or a separately managed Linux VPN appliance. The appliance configuration, public IP, BGP ASN, firewall rules, and IPsec secrets are not created by this module. Keep downloaded configurations and secrets private.
 
-Terminating the VPN at the Transit Gateway rather than at individual VPC Virtual Private Gateways means on-premises connectivity is centralized. Adding a new workload account requires adding a TGW route table entry — not configuring a new VPN tunnel.
+## Configure the endpoint and capture proof
 
-At one account, both approaches work. At twenty accounts, only TGW termination is manageable.
+1. In `terraform/terraform.tfvars`, set `vpn_customer_gateway` to an object containing the device `public_ip`, its `bgp_asn`, and the `onprem_cidr` it advertises. Keep the object null until the device is ready.
+2. Run `terraform plan` and confirm the plan contains one `aws_customer_gateway`, one `aws_vpn_connection`, the VPN route-table association, propagation, and the workload route.
+3. After an approved apply, open **AWS Console → VPC → Site-to-Site VPN connections** in the Network account and select the new connection.
+4. Choose **Download configuration**, select the customer-gateway vendor/platform/software, and download the generated device configuration. Treat it as sensitive; do not commit it or publish its tunnel secrets.
+5. Configure the device with both tunnels and BGP. Wait until both tunnel states show **UP** before testing.
+6. From a test host, verify one allowed connection to a workload private address and one blocked path. Confirm route tables and Flow Logs in the Network and Workload accounts.
+7. Save sanitized console and terminal screenshots as `11-connectivity-test.png` and update `verification/security-validation.md` with timestamps and results.
 
-## What On-Premises Can Reach
-
-On-premises traffic enters via VPN, terminates at Transit Gateway, and is routed per TGW route tables:
-
-| Destination | Accessible from On-Prem | Reason |
-|---|---|---|
-| Workload VPC private subnets | Yes | Explicit TGW route |
-| Logging account | No | No TGW route exists |
-| Security account | No | No TGW route exists |
-| Management account | No | No TGW route exists |
-| Internet (via AWS) | No | No NAT path from on-prem |
-
-On-premises to AWS traffic is logged via VPC Flow Logs. Any unexpected traffic patterns from the on-prem CIDR range trigger GuardDuty findings.
-
-## Redundancy
-
-Two VPN tunnels are configured between the customer gateway and Transit Gateway. AWS manages one tunnel per availability zone. If one tunnel fails, traffic automatically fails over to the second tunnel with no configuration change required. This matches the real enterprise pattern where VPN redundancy is a baseline requirement.
-
-## Security Controls on Hybrid Traffic
-
-On-premises traffic that enters AWS through the VPN is treated as untrusted by default:
-
-- Security Groups in workload VPCs restrict which resources on-prem can reach
-- VPC Flow Logs capture all traffic including source IPs from on-prem CIDR
-- GuardDuty monitors for anomalous traffic patterns from the VPN source range
-- On-prem hosts cannot assume AWS IAM roles — they have no credentials path
+The route table is not proof that a VPN is operational. The endpoint must complete IKE/IPsec negotiation and exchange the expected routes before connectivity can be claimed.

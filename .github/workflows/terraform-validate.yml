@@ -1,15 +1,30 @@
-
-name: Terraform Plan
+name: Terraform Validation
 on:
   pull_request:
     branches: [main]
     paths:
       - 'terraform/**'
       - 'policies/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'ARCHITECTURE.md'
+      - '.github/workflows/terraform-plan.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+      - 'policies/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'ARCHITECTURE.md'
+      - '.github/workflows/terraform-plan.yml'
+
+permissions:
+  contents: read
 
 jobs:
-  terraform-plan:
-    name: Terraform Plan
+  terraform-validate:
+    name: Format and validate Terraform
     runs-on: ubuntu-latest
 
     steps:
@@ -32,11 +47,3 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
         working-directory: terraform
-
-      # Plan step requires AWS credentials — add via GitHub Secrets when ready
-      # - name: Terraform Plan
-      #   run: terraform plan -no-color
-      #   working-directory: terraform
-      #   env:
-      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

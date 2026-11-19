@@ -304,7 +304,7 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "workload" {
 resource "aws_ec2_transit_gateway_vpc_attachment_accepter" "workload" {
   provider = aws.network
 
-  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.workload.id
+  transit_gateway_attachment_id = aws_ec2_transit_gateway_vpc_attachment.workload.id
 }
 
 resource "aws_ec2_transit_gateway_route_table_association" "workload" {

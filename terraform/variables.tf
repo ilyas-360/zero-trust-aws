@@ -187,8 +187,8 @@ variable "enable_securityhub" {
 variable "vpn_customer_gateway" {
   description = "Optional external IPsec customer gateway. When set, the module creates an AWS Site-to-Site VPN and expects the endpoint to be configured with AWS's downloaded tunnel configuration."
   type = object({
-    public_ip  = string
-    bgp_asn    = number
+    public_ip   = string
+    bgp_asn     = number
     onprem_cidr = string
   })
   default  = null

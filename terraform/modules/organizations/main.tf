@@ -50,7 +50,7 @@ resource "aws_organizations_organization" "root" {
   ]
 
   enabled_policy_types = ["SERVICE_CONTROL_POLICY"]
-  feature_set         = "ALL"
+  feature_set          = "ALL"
 }
 
 resource "aws_organizations_organizational_unit" "security" {
@@ -90,9 +90,9 @@ resource "aws_organizations_policy" "guardrails" {
 
 locals {
   ou_ids = {
-    security      = aws_organizations_organizational_unit.security.id
+    security       = aws_organizations_organizational_unit.security.id
     infrastructure = aws_organizations_organizational_unit.infrastructure.id
-    workload      = aws_organizations_organizational_unit.workload.id
+    workload       = aws_organizations_organizational_unit.workload.id
   }
   attachment_targets = setunion(toset(values(local.ou_ids)), toset(var.member_account_ids))
   attachment_matrix  = setproduct(local.attachment_targets, toset(keys(aws_organizations_policy.guardrails)))

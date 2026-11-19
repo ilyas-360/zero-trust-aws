@@ -77,7 +77,7 @@ resource "aws_s3_bucket_policy" "cloudtrail_logs" {
         Resource  = "${aws_s3_bucket.cloudtrail_logs.arn}/AWSLogs/${var.organization_id}/*"
         Condition = {
           StringEquals = {
-            "s3:x-amz-acl"  = "bucket-owner-full-control"
+            "s3:x-amz-acl"      = "bucket-owner-full-control"
             "aws:SourceAccount" = var.management_account_id
           }
           ArnLike = {

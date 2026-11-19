@@ -304,7 +304,7 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "workload" {
 resource "aws_ec2_transit_gateway_vpc_attachment_accepter" "workload" {
   provider = aws.network
 
-  transit_gateway_attachment_id = aws_ec2_transit_gateway_vpc_attachment.workload.id
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.workload.id
 }
 
 resource "aws_ec2_transit_gateway_route_table_association" "workload" {
@@ -332,14 +332,14 @@ resource "aws_ec2_transit_gateway_route" "workload_default_to_egress" {
   provider                       = aws.network
   count                          = var.enable_nat_gateway ? 1 : 0
   destination_cidr_block         = "0.0.0.0/0"
-  transit_gateway_attachment_id = aws_ec2_transit_gateway_vpc_attachment.network.id
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.network.id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.workload.id
 }
 
 resource "aws_ec2_transit_gateway_route" "egress_to_workload" {
   provider                       = aws.network
   destination_cidr_block         = var.workload_vpc_cidr
-  transit_gateway_attachment_id = aws_ec2_transit_gateway_vpc_attachment.workload.id
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.workload.id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.egress.id
 }
 
@@ -389,7 +389,7 @@ resource "aws_vpn_connection" "onprem" {
 resource "aws_ec2_transit_gateway_route_table_association" "onprem" {
   provider                       = aws.network
   count                          = var.customer_gateway_public_ip == null ? 0 : 1
-  transit_gateway_attachment_id = aws_vpn_connection.onprem[0].transit_gateway_attachment_id
+  transit_gateway_attachment_id  = aws_vpn_connection.onprem[0].transit_gateway_attachment_id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.onprem.id
 }
 
@@ -397,14 +397,14 @@ resource "aws_ec2_transit_gateway_route" "onprem_to_workload" {
   provider                       = aws.network
   count                          = var.customer_gateway_public_ip == null ? 0 : 1
   destination_cidr_block         = var.workload_vpc_cidr
-  transit_gateway_attachment_id = aws_ec2_transit_gateway_vpc_attachment.workload.id
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.workload.id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.onprem.id
 }
 
 resource "aws_ec2_transit_gateway_route_table_propagation" "onprem_to_workload" {
   provider                       = aws.network
   count                          = var.customer_gateway_public_ip == null ? 0 : 1
-  transit_gateway_attachment_id = aws_vpn_connection.onprem[0].transit_gateway_attachment_id
+  transit_gateway_attachment_id  = aws_vpn_connection.onprem[0].transit_gateway_attachment_id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.workload.id
 }
 
@@ -431,7 +431,7 @@ resource "aws_iam_role" "workload_flow_logs" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "vpc-flow-logs.amazonaws.com" }
       Action    = "sts:AssumeRole"
       Condition = {
@@ -490,7 +490,7 @@ resource "aws_iam_role" "network_flow_logs" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "vpc-flow-logs.amazonaws.com" }
       Action    = "sts:AssumeRole"
       Condition = {

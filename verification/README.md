@@ -78,6 +78,12 @@ terraform import -var-file=terraform.tfvars module.organizations.aws_organizatio
 
 If equivalent named SCPs or policy attachments already exist, reconcile/import those resources too before applying; use AWS Organizations → Policies → Service control policies and each target's policy list to identify IDs. Never attach duplicate policies blindly. For an attachment, Terraform's import ID format is `<policy-id>/<target-id>`; confirm the matching provider version's import documentation before using it.
 
+If Resource Access Manager sharing with the Organization is already enabled, import that existing setting rather than trying to create it again:
+
+```powershell
+terraform import -var-file=terraform.tfvars module.networking.aws_ram_sharing_with_organization.main <management-account-id>
+```
+
 Review the imported state and full plan for any attempt to change existing organization structure or account permissions. A policy attachment can immediately deny API operations across an account. Do not apply until the plan has been reviewed and the accounts are confirmed disposable sandbox accounts.
 
 ## 5. Format, initialize, validate, and plan

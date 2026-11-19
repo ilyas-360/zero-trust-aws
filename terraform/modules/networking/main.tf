@@ -47,7 +47,6 @@ resource "aws_ec2_transit_gateway" "main" {
 
 resource "aws_ram_sharing_with_organization" "main" {
   provider = aws.management
-  enabled  = true
 }
 
 resource "aws_ram_resource_share" "transit_gateway" {
